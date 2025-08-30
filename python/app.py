@@ -97,6 +97,51 @@ def index():
     """
     return "<h2>Metrics Server is Running</h2><p>Access the performance metrics at the <a href='/metrics'>/metrics</a> endpoint.</p>"
 
+def flow_score(stress, engagement, interest, excitement, attention, relaxation):
+    """
+    Computes a normalized flow state score (0–1) based on six input metrics.
+
+    Parameters:
+    - stress (float): Stress level (0–1)
+    - engagement (float): Engagement level (0–1)
+    - interest (float): Interest level (0–1)
+    - excitement (float): Excitement level (0–1)
+    - attention (float): Attention level (0–1)
+    - relaxation (float): Relaxation level (0–1)
+
+    Returns:
+    - float: Normalized flow state score (0–1)
+    """
+    def inverted_u_curve(x):
+        """Inverted-U curve centered at 0.5."""
+        return -4 * (x - 0.5) ** 2 + 1
+
+    # Normalize inputs to [0, 1]
+    stress = max(0, min(1, stress))
+    engagement = max(0, min(1, engagement))
+    interest = max(0, min(1, interest))
+    excitement = max(0, min(1, excitement))
+    attention = max(0, min(1, attention))
+    relaxation = max(0, min(1, relaxation))
+
+    # Compute individual contributions
+    stress_score = inverted_u_curve(stress) * 0.15
+    excitement_score = inverted_u_curve(excitement) * 0.15
+    engagement_score = engagement * 0.20
+    interest_score = interest * 0.15
+    attention_score = attention * 0.25
+    relaxation_score = inverted_u_curve(relaxation) * 0.10
+
+    # Compute total score and clamp to [0, 1]
+    total_score = stress_score + excitement_score + engagement_score + interest_score + attention_score + relaxation_score
+    return max(0, min(1, total_score))
+
+# Example calls
+
+# print("Flow-like state:", flow_score(0.5, 0.9, 0.8, 0.5, 0.95, 0.4))  # Expected: High score (~0.9)
+# print("Bored state:", flow_score(0.2, 0.3, 0.2, 0.2, 0.3, 0.8))        # Expected: Low score (~0.3)
+# print("Overstressed state:", flow_score(0.9, 0.7, 0.6, 0.9, 0.8, 0.2)) # Expected: Moderate score (~0.6)
+
 def main():
     """
     Main function to start the Cortex client and the Flask server.
