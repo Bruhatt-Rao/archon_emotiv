@@ -1,6 +1,13 @@
+import os
+from dotenv import load_dotenv
 from cortex import Cortex
 
-class Subcribe():
+load_dotenv()
+
+CLIENT_ID = os.getenv("CLIENT_ID")
+CLIENT_SECRET = os.getenv("CLIENT_SECRET")
+
+class Subscribe():
     """
     A class to subscribe data stream.
 
@@ -16,7 +23,7 @@ class Subcribe():
     sub(streams):
         To subscribe to one or more data streams.
     on_new_data_labels(*args, **kwargs):
-        To handle data labels of subscribed data 
+        To handle data labels of subscribed data
     on_new_eeg_data(*args, **kwargs):
         To handle eeg data emitted from Cortex
     on_new_mot_data(*args, **kwargs):
@@ -36,15 +43,20 @@ class Subcribe():
         print("Subscribe __init__")
         self.c = Cortex(app_client_id, app_client_secret, debug_mode=True, **kwargs)
         self.c.bind(create_session_done=self.on_create_session_done)
+        self.c.bind(query_profile_done=self.on_query_profile_done)
+        self.c.bind(load_unload_profile_done=self.on_load_unload_profile_done)
         self.c.bind(new_data_labels=self.on_new_data_labels)
         self.c.bind(new_eeg_data=self.on_new_eeg_data)
         self.c.bind(new_mot_data=self.on_new_mot_data)
         self.c.bind(new_dev_data=self.on_new_dev_data)
         self.c.bind(new_met_data=self.on_new_met_data)
         self.c.bind(new_pow_data=self.on_new_pow_data)
+        self.c.bind(new_com_data=self.on_new_com_data)
+        self.c.bind(new_fe_data=self.on_new_fac_data)
         self.c.bind(inform_error=self.on_inform_error)
+        self.profile_name = ''
 
-    def start(self, streams, headset_id=''):
+    def start(self, streams, profile_name="", headset_id=''):
         """
         To start data subscribing process as below workflow
         (1)check access right -> authorize -> connect headset->create session
@@ -68,6 +80,10 @@ class Subcribe():
         None
         """
         self.streams = streams
+        self.profile_name = profile_name
+
+        if self.profile_name != "":
+            self.c.set_wanted_profile(self.profile_name)
 
         if headset_id != '':
             self.c.set_wanted_headset(headset_id)
@@ -114,12 +130,37 @@ class Subcribe():
         """
         self.c.unsub_request(streams)
 
+    def on_create_session_done(self, *args, **kwargs):
+        if self.profile_name != "":
+            self.c.query_profile()
+        else:
+            self.sub(self.streams)
+
+    def on_query_profile_done(self, *args, **kwargs):
+        self.profile_lists = kwargs.get('data')
+        if self.profile_name in self.profile_lists:
+            self.c.setup_profile(self.profile_name, 'load')
+        else:
+            print(f"The profile {self.profile_name} does not exist.")
+            # Still subscribe to raw data streams if profile not found
+            self.sub(self.streams)
+
+    def on_load_unload_profile_done(self, *args, **kwargs):
+        is_loaded = kwargs.get('isLoaded')
+        if is_loaded:
+            print(f"Profile {self.profile_name} loaded successfully.")
+            self.sub(self.streams)
+        else:
+            print(f"Unable to load profile {self.profile_name}.")
+            # Still subscribe to raw data streams if profile loading fails
+            self.sub(self.streams)
+
     def on_new_data_labels(self, *args, **kwargs):
         """
-        To handle data labels of subscribed data 
+        To handle data labels of subscribed data
         Returns
         -------
-        data: list  
+        data: list
               array of data labels
         name: stream name
         For example:
@@ -200,19 +241,27 @@ class Subcribe():
         data = kwargs.get('data')
         print('pow data: {}'.format(data))
 
-    # callbacks functions
-    def on_create_session_done(self, *args, **kwargs):
-        print('on_create_session_done')
+    def on_new_fac_data(self, *args, **kwargs):
+        """
+        To handle facial expression data emitted from Cortex
+        """
+        data = kwargs.get('data')
+        print('facial expression data: {}'.format(data))
 
-        # subribe data 
-        self.sub(self.streams)
+    def on_new_com_data(self, *args, **kwargs):
+        """
+        To handle mental command data emitted from Cortex
+        """
+        data = kwargs.get('data')
+        print('mental command data: {}'.format(data))
 
     def on_inform_error(self, *args, **kwargs):
         error_data = kwargs.get('error_data')
         print(error_data)
 
+
 # -----------------------------------------------------------
-# 
+#
 # GETTING STARTED
 #   - Please reference to https://emotiv.gitbook.io/cortex-api/ first.
 #   - Connect your headset with dongle or bluetooth. You can see the headset via Emotiv Launcher
@@ -221,22 +270,33 @@ class Subcribe():
 # RESULT
 #   - the data labels will be retrieved at on_new_data_labels
 #   - the data will be retreived at on_new_[dataStream]_data
-# 
+#
 # -----------------------------------------------------------
 
 def main():
-
     # Please fill your application clientId and clientSecret before running script
-    your_app_client_id = ''
-    your_app_client_secret = ''
+    your_app_client_id = CLIENT_ID
+    your_app_client_secret = CLIENT_SECRET
 
-    s = Subcribe(your_app_client_id, your_app_client_secret)
+    # init cortex client
+    s = Subscribe(your_app_client_id, your_app_client_secret)
 
-    # list data streams
-    streams = ['eeg','mot','met','pow']
-    s.start(streams)
+    # list of streams
+    streams = ['eeg','mot','dev','met','pow','com', 'fac']
 
-if __name__ =='__main__':
+    # ------------------------------------------------------------------
+    # 1. Subscribe to data with a specific profile
+    # Make sure you have a trained profile in your Emotiv App
+    # profile_name = "your_profile_name" # Please set a trained profile name
+    # s.start(streams, profile_name)
+    # ------------------------------------------------------------------
+
+    # ------------------------------------------------------------------
+    # 2. Subscribe to data without a profile
+    s.start(streams, "archon")
+    # ------------------------------------------------------------------
+
+if __name__ == '__main__':
     main()
 
 # -----------------------------------------------------------
